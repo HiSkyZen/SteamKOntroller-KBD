@@ -1,37 +1,34 @@
-## Plugin Template
+## Steam Korean Keyboard Injection
 
-A plugin template for Millennium providing a basic boilerplate to help get started. You'll need a decent understanding in python, and typescript (superset of javascript)
-<br>
+A Millennium plugin that adds Korean qwerty labels to Steam's on-screen keyboard.
 
 ## Prerequisites
 
-- **[Millennium](https://github.com/SteamClientHomebrew/Millennium)**
-
-## Setting up
-
-```ps1
-git clone https://github.com/SteamClientHomebrew/PluginTemplate
-cd PluginTemplate
-```
+- [Millennium](https://steambrew.app/)
+- pnpm
 
 ## Building
 
+```ps1
+pnpm install
+pnpm run build
 ```
+
+For development builds:
+
+```ps1
 pnpm run dev
 ```
 
-Then ensure your plugin template is in your plugins folder.
-`%MILLENNIUM_PATH%/plugins/plugin_template`, and select it from the "Plugins" tab within Steam.
+## Installing Locally
 
-If you wish to develop your plugin outside of `%MILLENNIUM_PATH%/plugins`, you can create a symbolic link from your development path to the plugins path
+Place or symlink this repository into your Millennium plugins directory, then enable
+`Steam Korean Keyboard Injection` from Steam's Millennium plugin settings.
 
-#### Note:
+Common plugin directories:
 
-**MILLENNIUM_PATH** =
+- Windows: `%STEAM%\plugin\steam-korean-keyboard-injection`
+- Linux: `~/.local/share/millennium/plugins/steam-korean-keyboard-injection`
 
-- Steam Path (ex: `C:\Program Files (x86)\Steam`) (Windows)
-- `~/.local/share/millennium` (Unix)
-
-## Next Steps
-
-https://docs.steambrew.app/developers/plugins/learn
+The SteamUI patch is implemented in `src/keyboard-injection.js` and loaded
+from the Millennium frontend entry point.
