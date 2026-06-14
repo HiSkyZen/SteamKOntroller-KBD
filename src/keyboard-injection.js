@@ -48,10 +48,7 @@
 	var LETTER_KEY_SELECTOR = '.Layout_qwerty [data-key][data-key-row][data-key-col], .Layout_qwerty_int [data-key][data-key-row][data-key-col]';
 	var ALTGR_KEY_SELECTOR = '.Layout_qwerty_int [data-key="AltGr"][data-key-row][data-key-col], .Layout_qwerty_int [data-key="' + HANGUL_TOGGLE_SENTINEL + '"][data-key-row][data-key-col]';
 	var KEY_SELECTOR = LETTER_KEY_SELECTOR + ', ' + ALTGR_KEY_SELECTOR;
-	var US_INTL_DEAD_KEY_BY_LABEL = {
-		'\' "': '\'',
-		'" \'': '\'',
-	};
+	var HANGUL_LABEL_ATTR = 'data-steam-korean-hangul-label';
 
 	function resolveWindow(target) {
 		if (!target) return window;
@@ -87,58 +84,118 @@
 			'line-height:1;',
 			'pointer-events:none;',
 			'}',
-			'.steam-korean-keycap__latin{',
-			'justify-self:end;',
-			'font-size:.82em;',
-			'opacity:.76;',
-			'}',
 			'.steam-korean-keycap__hangul{',
-			'justify-self:start;',
 			'font-size:.72em;',
 			'font-weight:500;',
 			'opacity:.62;',
+			'pointer-events:none;',
 			'}',
 		].join('');
 		privateDocument.head.appendChild(style);
 	}
 
-	function getPrimaryLabelSpan(keyElement) {
+	function getInnerLabelContainer(keyElement) {
 		var inner = Array.prototype.find.call(keyElement.children, function (child) {
 			return child.tagName === 'DIV';
 		});
-		if (!inner) return null;
+		return inner || null;
+	}
 
-		var spans = Array.prototype.filter.call(inner.children, function (child) {
+	function getDirectSpans(inner) {
+		if (!inner) return [];
+		return Array.prototype.filter.call(inner.children, function (child) {
 			return child.tagName === 'SPAN';
 		});
+	}
+
+	function getPrimaryLabelSpan(keyElement) {
+		var inner = getInnerLabelContainer(keyElement);
+		var spans = getDirectSpans(inner);
 		if (!spans.length) return null;
 
-		return spans[spans.length - 1];
+		var rawKey = keyElement.getAttribute('data-key') || '';
+		var restoredKey = rawKey.length === 1 ? rawKey : '';
+
+		return (
+			Array.prototype.find.call(spans, function (span) {
+				return span.textContent === restoredKey || span.textContent === restoredKey.toUpperCase();
+			}) ||
+			Array.prototype.find.call(spans, function (span) {
+				return !span.className && !span.hasAttribute(HANGUL_LABEL_ATTR);
+			}) ||
+			spans[0]
+		);
 	}
 
-	function getLatinLabel(keyElement, labelSpan, key) {
-		var injected = labelSpan.firstElementChild;
-		if (injected && injected.classList.contains('steam-korean-keycap') && injected.dataset.latin) {
-			return injected.dataset.latin;
+	function restoreLegacyKeycap(keyElement) {
+		Array.prototype.forEach.call(keyElement.querySelectorAll('.steam-korean-keycap'), function (legacyKeycap) {
+			var latin = legacyKeycap.dataset && legacyKeycap.dataset.latin;
+			var parent = legacyKeycap.parentElement;
+			if (parent) parent.textContent = latin || '';
+		});
+	}
+
+	function getSteamAltGrClassName(keyElement, inner, primarySpan) {
+		var spans = getDirectSpans(inner);
+		var primaryIndex = spans.indexOf(primarySpan);
+		var localCandidate = primaryIndex >= 0 ? spans.slice(primaryIndex + 1) : [];
+		var candidate = localCandidate.filter(function (span) {
+			return !span.hasAttribute(HANGUL_LABEL_ATTR);
+		}).pop();
+
+		if (candidate && candidate.className) {
+			return candidate.className;
 		}
 
-		var text = (labelSpan.textContent || '').trim();
-		if (/^[A-Za-z]$/.test(text)) return text;
-		return key;
+		var layout = keyElement.closest('.Layout_qwerty_int');
+		if (!layout) return '';
+
+		var cached = layout.getAttribute('data-steam-korean-altgr-class');
+		if (cached) return cached;
+
+		var keys = layout.querySelectorAll('[data-key][data-key-row][data-key-col]');
+		for (var index = 0; index < keys.length; index += 1) {
+			var otherInner = getInnerLabelContainer(keys[index]);
+			var otherSpans = getDirectSpans(otherInner);
+			var otherPrimary = Array.prototype.find.call(otherSpans, function (span) {
+				return !span.className && !span.hasAttribute(HANGUL_LABEL_ATTR);
+			});
+			var otherPrimaryIndex = otherSpans.indexOf(otherPrimary);
+			var otherCandidate = otherPrimaryIndex >= 0 ? otherSpans.slice(otherPrimaryIndex + 1).filter(function (span) {
+				return !span.hasAttribute(HANGUL_LABEL_ATTR);
+			}).pop() : null;
+			if (otherCandidate && otherCandidate.className) {
+				layout.setAttribute('data-steam-korean-altgr-class', otherCandidate.className);
+				return otherCandidate.className;
+			}
+		}
+
+		return '';
 	}
 
-	function normalizeUsIntlDeadKey(keyElement) {
-		if (!keyElement.closest('.Layout_qwerty_int')) return;
+	function removeSecondaryLabelsAfter(inner, primarySpan) {
+		var spans = getDirectSpans(inner);
+		var primaryIndex = spans.indexOf(primarySpan);
+		if (primaryIndex < 0) return;
 
-		var labelSpan = getPrimaryLabelSpan(keyElement);
-		if (!labelSpan) return;
+		var keptHangulLabel = false;
+		spans.slice(primaryIndex + 1).forEach(function (span) {
+			if (span.hasAttribute(HANGUL_LABEL_ATTR) && !keptHangulLabel) {
+				keptHangulLabel = true;
+				return;
+			}
+			span.remove();
+		});
+	}
 
-		var label = (labelSpan.textContent || '').trim().replace(/\s+/g, ' ');
-		var normalizedKey = US_INTL_DEAD_KEY_BY_LABEL[label];
-		if (!normalizedKey) return;
+	function getExistingHangulLabel(inner, primarySpan) {
+		var spans = getDirectSpans(inner);
+		var primaryIndex = spans.indexOf(primarySpan);
+		if (primaryIndex < 0) return null;
 
-		keyElement.setAttribute('data-key', normalizedKey);
-		keyElement.setAttribute('aria-label', label);
+		return Array.prototype.find.call(spans.slice(primaryIndex + 1), function (span) {
+			return span.hasAttribute(HANGUL_LABEL_ATTR);
+		}) || null;
 	}
 
 	function patchAltGrKey(keyElement) {
@@ -162,45 +219,48 @@
 		if (patchAltGrKey(keyElement)) return;
 		if (!keyElement.closest('.Layout_qwerty') && !keyElement.closest('.Layout_qwerty_int')) return;
 
-		normalizeUsIntlDeadKey(keyElement);
-
 		var rawKey = keyElement.getAttribute('data-key');
 		if (!rawKey || rawKey.length !== 1) return;
 
 		var key = rawKey.toLowerCase();
 		if (!Object.prototype.hasOwnProperty.call(HANGUL_BY_KEY, key)) return;
 
-		var labelSpan = getPrimaryLabelSpan(keyElement);
-		if (!labelSpan) return;
+		restoreLegacyKeycap(keyElement);
 
-		var latin = getLatinLabel(keyElement, labelSpan, rawKey);
+		var inner = getInnerLabelContainer(keyElement);
+		var labelSpan = getPrimaryLabelSpan(keyElement);
+		if (!inner || !labelSpan) return;
+
+		var latin = rawKey;
 		var shifted = latin === latin.toUpperCase();
 		var hangul = shifted ? SHIFT_HANGUL_BY_KEY[key] || HANGUL_BY_KEY[key] : HANGUL_BY_KEY[key];
-		var existing = labelSpan.firstElementChild;
-
-		if (existing && existing.classList.contains('steam-korean-keycap') && existing.dataset.latin === latin && existing.dataset.hangul === hangul) {
-			return;
-		}
+		var altGrClassName = getSteamAltGrClassName(keyElement, inner, labelSpan);
 
 		var privateDocument = keyElement.ownerDocument || document;
-		var wrapper = privateDocument.createElement('span');
-		wrapper.className = 'steam-korean-keycap';
-		wrapper.dataset.latin = latin;
-		wrapper.dataset.hangul = hangul;
+		removeSecondaryLabelsAfter(inner, labelSpan);
 
-		var latinNode = privateDocument.createElement('span');
-		latinNode.className = 'steam-korean-keycap__latin';
-		latinNode.textContent = latin;
+		var expectedClassName = (altGrClassName ? altGrClassName + ' ' : '') + 'steam-korean-keycap__hangul';
+		var hangulNode = getExistingHangulLabel(inner, labelSpan);
+		if (!hangulNode) {
+			hangulNode = privateDocument.createElement('span');
+			hangulNode.setAttribute(HANGUL_LABEL_ATTR, '1');
+			labelSpan.insertAdjacentElement('afterend', hangulNode);
+		}
 
-		var hangulNode = privateDocument.createElement('span');
-		hangulNode.className = 'steam-korean-keycap__hangul';
-		hangulNode.textContent = hangul;
+		if (hangulNode.className !== expectedClassName) {
+			hangulNode.className = expectedClassName;
+		}
+		if (!hangulNode.hasAttribute(HANGUL_LABEL_ATTR)) {
+			hangulNode.setAttribute(HANGUL_LABEL_ATTR, '1');
+		}
+		if (hangulNode.textContent !== hangul) {
+			hangulNode.textContent = hangul;
+		}
 
-		wrapper.appendChild(latinNode);
-		wrapper.appendChild(hangulNode);
-		labelSpan.textContent = '';
-		labelSpan.appendChild(wrapper);
-		keyElement.setAttribute('aria-label', latin + ' ' + hangul);
+		var ariaLabel = latin + ' ' + hangul;
+		if (keyElement.getAttribute('aria-label') !== ariaLabel) {
+			keyElement.setAttribute('aria-label', ariaLabel);
+		}
 	}
 
 	function patchKeyboard(root, privateDocument) {
