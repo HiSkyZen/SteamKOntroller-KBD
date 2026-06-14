@@ -44,7 +44,14 @@
 	};
 
 	var STYLE_ID = 'steam-korean-keyboard-injection-style';
-	var KEY_SELECTOR = '.Layout_qwerty [data-key][data-key-row][data-key-col]';
+	var HANGUL_TOGGLE_SENTINEL = '\u12D0';
+	var LETTER_KEY_SELECTOR = '.Layout_qwerty [data-key][data-key-row][data-key-col], .Layout_qwerty_int [data-key][data-key-row][data-key-col]';
+	var ALTGR_KEY_SELECTOR = '.Layout_qwerty_int [data-key="AltGr"][data-key-row][data-key-col], .Layout_qwerty_int [data-key="' + HANGUL_TOGGLE_SENTINEL + '"][data-key-row][data-key-col]';
+	var KEY_SELECTOR = LETTER_KEY_SELECTOR + ', ' + ALTGR_KEY_SELECTOR;
+	var US_INTL_DEAD_KEY_BY_LABEL = {
+		'\' "': '\'',
+		'" \'': '\'',
+	};
 
 	function resolveWindow(target) {
 		if (!target) return window;
@@ -53,6 +60,14 @@
 		if (target.ownerDocument && target.ownerDocument.defaultView) return target.ownerDocument.defaultView;
 		if (target.defaultView) return target.defaultView;
 		if (target.document) return target;
+		if (target.BrowserWindow && target.BrowserWindow.document) return target.BrowserWindow;
+		if (target.m_BrowserWindow && target.m_BrowserWindow.document) return target.m_BrowserWindow;
+		if (target.m_browser && target.m_browser.document) return target.m_browser;
+		if (target.browser && target.browser.document) return target.browser;
+		if (typeof target.GetBrowserWindow === 'function') {
+			var browserWindow = target.GetBrowserWindow();
+			if (browserWindow && browserWindow.document) return browserWindow;
+		}
 		return window;
 	}
 
@@ -79,8 +94,9 @@
 			'}',
 			'.steam-korean-keycap__hangul{',
 			'justify-self:start;',
-			'font-size:1.04em;',
-			'font-weight:600;',
+			'font-size:.72em;',
+			'font-weight:500;',
+			'opacity:.62;',
 			'}',
 		].join('');
 		privateDocument.head.appendChild(style);
@@ -111,8 +127,42 @@
 		return key;
 	}
 
+	function normalizeUsIntlDeadKey(keyElement) {
+		if (!keyElement.closest('.Layout_qwerty_int')) return;
+
+		var labelSpan = getPrimaryLabelSpan(keyElement);
+		if (!labelSpan) return;
+
+		var label = (labelSpan.textContent || '').trim().replace(/\s+/g, ' ');
+		var normalizedKey = US_INTL_DEAD_KEY_BY_LABEL[label];
+		if (!normalizedKey) return;
+
+		keyElement.setAttribute('data-key', normalizedKey);
+		keyElement.setAttribute('aria-label', label);
+	}
+
+	function patchAltGrKey(keyElement) {
+		if (!keyElement.closest('.Layout_qwerty_int')) return false;
+
+		var rawKey = keyElement.getAttribute('data-key');
+		if (rawKey !== 'AltGr' && rawKey !== HANGUL_TOGGLE_SENTINEL) return false;
+
+		keyElement.setAttribute('data-key', HANGUL_TOGGLE_SENTINEL);
+		keyElement.setAttribute('aria-label', '한/영');
+
+		var labelSpan = getPrimaryLabelSpan(keyElement);
+		if (labelSpan && labelSpan.textContent !== '한/영') {
+			labelSpan.textContent = '한/영';
+		}
+
+		return true;
+	}
+
 	function patchKey(keyElement) {
-		if (!keyElement.closest('.Layout_qwerty')) return;
+		if (patchAltGrKey(keyElement)) return;
+		if (!keyElement.closest('.Layout_qwerty') && !keyElement.closest('.Layout_qwerty_int')) return;
+
+		normalizeUsIntlDeadKey(keyElement);
 
 		var rawKey = keyElement.getAttribute('data-key');
 		if (!rawKey || rawKey.length !== 1) return;
