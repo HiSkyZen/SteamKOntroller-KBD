@@ -45,6 +45,15 @@
 
 	var STYLE_ID = 'steam-korean-keyboard-injection-style';
 	var HANGUL_TOGGLE_SENTINEL = '\u12D0';
+	var NON_DEAD_QWERTY_INT_KEYS = {
+		'`': true,
+		'~': true,
+		'^': true,
+		"'": true,
+		'"': true,
+	};
+	var NON_DEAD_KEY_ATTR = 'data-steam-korean-nondead-key';
+	var DEAD_KEY_CLASS_CACHE = '__steamKoreanDeadKeyClassNames';
 	var LETTER_KEY_SELECTOR = '.Layout_qwerty [data-key][data-key-row][data-key-col], .Layout_qwerty_int [data-key][data-key-row][data-key-col]';
 	var ALTGR_KEY_SELECTOR = '.Layout_qwerty_int [data-key="AltGr"][data-key-row][data-key-col], .Layout_qwerty_int [data-key="' + HANGUL_TOGGLE_SENTINEL + '"][data-key-row][data-key-col]';
 	var KEY_SELECTOR = LETTER_KEY_SELECTOR + ', ' + ALTGR_KEY_SELECTOR;
@@ -106,6 +115,86 @@
 		return Array.prototype.filter.call(inner.children, function (child) {
 			return child.tagName === 'SPAN';
 		});
+	}
+
+	function getClassTokens(element) {
+		if (!element || !element.classList) return [];
+		return Array.prototype.slice.call(element.classList);
+	}
+
+	function addClassTokens(target, tokens) {
+		tokens.forEach(function (token) {
+			target[token] = true;
+		});
+	}
+
+	function getTokenDifference(tokens, excludedTokens) {
+		return Object.keys(tokens).filter(function (token) {
+			return !excludedTokens[token];
+		});
+	}
+
+	function removeClassTokens(element, tokens) {
+		if (!element || !element.classList || !tokens.length) return;
+		tokens.forEach(function (token) {
+			element.classList.remove(token);
+		});
+	}
+
+	function getQwertyIntDeadKeyClassNames(layout) {
+		if (layout[DEAD_KEY_CLASS_CACHE]) return layout[DEAD_KEY_CLASS_CACHE];
+
+		var deadInnerTokens = {};
+		var normalInnerTokens = {};
+		var deadLabelTokens = {};
+		var normalLabelTokens = {};
+		var keys = layout.querySelectorAll('[data-key][data-key-row][data-key-col]');
+
+		Array.prototype.forEach.call(keys, function (keyElement) {
+			var rawKey = keyElement.getAttribute('data-key');
+			var inner = getInnerLabelContainer(keyElement);
+			var spans = getDirectSpans(inner);
+			var isTargetDeadKey = (
+				rawKey &&
+				Object.prototype.hasOwnProperty.call(NON_DEAD_QWERTY_INT_KEYS, rawKey) &&
+				keyElement.hasAttribute('data-dead-key-next')
+			);
+
+			addClassTokens(isTargetDeadKey ? deadInnerTokens : normalInnerTokens, getClassTokens(inner));
+			spans.forEach(function (span) {
+				addClassTokens(isTargetDeadKey ? deadLabelTokens : normalLabelTokens, getClassTokens(span));
+			});
+		});
+
+		layout[DEAD_KEY_CLASS_CACHE] = {
+			inner: getTokenDifference(deadInnerTokens, normalInnerTokens),
+			label: getTokenDifference(deadLabelTokens, normalLabelTokens),
+		};
+		return layout[DEAD_KEY_CLASS_CACHE];
+	}
+
+	function patchQwertyIntDeadKey(keyElement) {
+		var layout = keyElement.closest('.Layout_qwerty_int');
+		if (!layout) return false;
+
+		var rawKey = keyElement.getAttribute('data-key');
+		if (!Object.prototype.hasOwnProperty.call(NON_DEAD_QWERTY_INT_KEYS, rawKey)) return false;
+
+		var hadDeadKeyBehavior = keyElement.hasAttribute('data-dead-key-next') || keyElement.hasAttribute('data-dead-key-combined');
+		if (!hadDeadKeyBehavior && keyElement.getAttribute(NON_DEAD_KEY_ATTR) === '1') return false;
+
+		var deadKeyClassNames = getQwertyIntDeadKeyClassNames(layout);
+		keyElement.removeAttribute('data-dead-key-next');
+		keyElement.removeAttribute('data-dead-key-combined');
+		keyElement.setAttribute(NON_DEAD_KEY_ATTR, '1');
+
+		var inner = getInnerLabelContainer(keyElement);
+		removeClassTokens(inner, deadKeyClassNames.inner);
+		getDirectSpans(inner).forEach(function (span) {
+			removeClassTokens(span, deadKeyClassNames.label);
+		});
+
+		return true;
 	}
 
 	function getPrimaryLabelSpan(keyElement) {
@@ -233,6 +322,7 @@
 
 	function patchKey(keyElement) {
 		if (patchAltGrKey(keyElement)) return;
+		if (patchQwertyIntDeadKey(keyElement)) return;
 		if (!keyElement.closest('.Layout_qwerty') && !keyElement.closest('.Layout_qwerty_int')) return;
 
 		var rawKey = keyElement.getAttribute('data-key');
@@ -344,7 +434,7 @@
 			subtree: true,
 			attributes: true,
 			characterData: true,
-			attributeFilter: ['class', 'data-key', 'data-key-row', 'data-key-col'],
+			attributeFilter: ['class', 'data-key', 'data-key-row', 'data-key-col', 'data-dead-key-next', 'data-dead-key-combined'],
 		});
 	}
 

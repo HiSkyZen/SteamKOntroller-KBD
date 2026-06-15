@@ -11,7 +11,7 @@ function installKeyboardInjection(target) {
 const SettingsContent = () => {
 	return createElement(Field, {
 		label: 'Korean keyboard injection',
-		description: "Adds Korean qwerty labels to Steam's on-screen keyboard.",
+		description: "Adds Korean qwerty labels and maps the US International AltGr key position to an Ethiopic 한/영 sentinel.",
 		icon: createElement(IconsModule.Settings),
 		bottomSeparator: 'standard',
 		focusable: true,
