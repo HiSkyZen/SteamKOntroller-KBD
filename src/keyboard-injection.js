@@ -173,18 +173,20 @@
 		return '';
 	}
 
-	function removeSecondaryLabelsAfter(inner, primarySpan) {
+	function removeDuplicateHangulLabelsAfter(inner, primarySpan) {
 		var spans = getDirectSpans(inner);
 		var primaryIndex = spans.indexOf(primarySpan);
 		if (primaryIndex < 0) return;
 
 		var keptHangulLabel = false;
 		spans.slice(primaryIndex + 1).forEach(function (span) {
-			if (span.hasAttribute(HANGUL_LABEL_ATTR) && !keptHangulLabel) {
-				keptHangulLabel = true;
-				return;
+			if (span.hasAttribute(HANGUL_LABEL_ATTR)) {
+				if (!keptHangulLabel) {
+					keptHangulLabel = true;
+					return;
+				}
+				span.remove();
 			}
-			span.remove();
 		});
 	}
 
@@ -237,7 +239,7 @@
 		var altGrClassName = getSteamAltGrClassName(keyElement, inner, labelSpan);
 
 		var privateDocument = keyElement.ownerDocument || document;
-		removeSecondaryLabelsAfter(inner, labelSpan);
+		removeDuplicateHangulLabelsAfter(inner, labelSpan);
 
 		var expectedClassName = (altGrClassName ? altGrClassName + ' ' : '') + 'steam-korean-keycap__hangul';
 		var hangulNode = getExistingHangulLabel(inner, labelSpan);
