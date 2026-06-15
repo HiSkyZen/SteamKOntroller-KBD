@@ -8,7 +8,7 @@
 	"version": "1.0.0",
 	"description": "A Millennium plugin that adds Korean qwerty labels to Steam's on-screen keyboard.",
 	"main": "./frontend/index.tsx",
-	"author": "",
+	"author": "HiSkyZen",
 	"license": "MIT",
 	"dependencies": {
 		"@steambrew/client": "^5.5.3",
